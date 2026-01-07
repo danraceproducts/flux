@@ -72,17 +72,19 @@ export function DraggableTaskCard({
 
       {/* Footer */}
       <div class="flex items-center justify-between mt-auto pt-2">
-        {/* Dependencies */}
-        {task.depends_on.length > 0 ? (
-          <div class={`flex items-center gap-1 text-xs ${task.blocked ? 'text-warning' : 'text-base-content/40'}`}>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-              <path fill-rule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd" transform="rotate(180 10 10)" />
-            </svg>
-            <span>{task.depends_on.length}</span>
-          </div>
-        ) : (
-          <div />
-        )}
+        <div class="flex items-center gap-2">
+          {task.status === 'in_progress' && (
+            <progress class="progress progress-success w-10" />
+          )}
+          {task.depends_on.length > 0 && (
+            <div class={`flex items-center gap-1 text-xs ${task.blocked ? 'text-warning' : 'text-base-content/40'}`}>
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M5.293 9.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 7.414V15a1 1 0 11-2 0V7.414L6.707 9.707a1 1 0 01-1.414 0z" clip-rule="evenodd" transform="rotate(180 10 10)" />
+              </svg>
+              <span>{task.depends_on.length}</span>
+            </div>
+          )}
+        </div>
 
         {/* Task Number */}
         {taskNumber && (

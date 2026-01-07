@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, watch } from 'fs';
 import {
   setStorageAdapter,
   initStore,
@@ -83,6 +83,80 @@ const app = new Hono();
 
 // Enable CORS for development
 app.use('*', cors());
+
+// ============ Live Update Events (SSE) ============
+const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
+const sseEncoder = new TextEncoder();
+let heartbeatInterval: NodeJS.Timeout | null = null;
+let fileChangeTimeout: NodeJS.Timeout | null = null;
+
+const broadcastSse = (event: string, data: unknown) => {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const encoded = sseEncoder.encode(payload);
+  for (const controller of sseClients) {
+    try {
+      controller.enqueue(encoded);
+    } catch {
+      sseClients.delete(controller);
+    }
+  }
+};
+
+const startHeartbeat = () => {
+  if (heartbeatInterval) return;
+  heartbeatInterval = setInterval(() => {
+    const payload = sseEncoder.encode(': keep-alive\n\n');
+    for (const controller of sseClients) {
+      try {
+        controller.enqueue(payload);
+      } catch {
+        sseClients.delete(controller);
+      }
+    }
+    if (sseClients.size === 0 && heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+      heartbeatInterval = null;
+    }
+  }, 20000);
+};
+
+const notifyDataChange = () => {
+  if (fileChangeTimeout) {
+    clearTimeout(fileChangeTimeout);
+  }
+  fileChangeTimeout = setTimeout(() => {
+    broadcastSse('data-changed', { ts: Date.now() });
+  }, 75);
+};
+
+watch(DATA_FILE, () => {
+  notifyDataChange();
+});
+
+app.get('/api/events', () => {
+  let clientController: ReadableStreamDefaultController<Uint8Array> | null = null;
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      clientController = controller;
+      sseClients.add(controller);
+      controller.enqueue(sseEncoder.encode('event: connected\ndata: "ok"\n\n'));
+      startHeartbeat();
+    },
+    cancel() {
+      if (clientController) {
+        sseClients.delete(clientController);
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+  });
+});
 
 // ============ API Routes ============
 

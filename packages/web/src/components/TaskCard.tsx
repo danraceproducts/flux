@@ -33,6 +33,12 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
             All {task.depends_on.length} dep{task.depends_on.length > 1 ? 's' : ''} done
           </div>
         )}
+        {task.status === 'in_progress' && (
+          <div class="mt-2 flex items-center gap-1 text-xs text-primary">
+            <span class="loading loading-spinner loading-xs text-primary" />
+            In progress
+          </div>
+        )}
       </div>
     </div>
   )
