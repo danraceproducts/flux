@@ -74,6 +74,31 @@ export function Board({ projectId }: BoardProps) {
     loadProject();
   }, [projectId]);
 
+  useEffect(() => {
+    if (!projectId) return;
+    const eventsBase = import.meta.env.DEV ? "http://localhost:3000" : "";
+    const source = new EventSource(`${eventsBase}/api/events`);
+    let refreshTimeout: number | null = null;
+
+    const scheduleRefresh = () => {
+      if (refreshTimeout) {
+        window.clearTimeout(refreshTimeout);
+      }
+      refreshTimeout = window.setTimeout(() => {
+        refreshData();
+      }, 100);
+    };
+
+    source.addEventListener("data-changed", scheduleRefresh);
+
+    return () => {
+      if (refreshTimeout) {
+        window.clearTimeout(refreshTimeout);
+      }
+      source.close();
+    };
+  }, [projectId]);
+
   const loadProject = async () => {
     if (!projectId) return;
     setLoading(true);
