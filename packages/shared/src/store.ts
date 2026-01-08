@@ -122,7 +122,7 @@ export function createEpic(projectId: string, title: string, notes: string = '')
   const epic: Epic = {
     id: generateId(),
     title,
-    status: 'todo',
+    status: 'planning',
     depends_on: [],
     notes,
     project_id: projectId,
@@ -185,7 +185,7 @@ export function createTask(
   const task: Task = {
     id: generateId(),
     title,
-    status: 'todo',
+    status: 'planning',
     depends_on: [],
     notes,
     epic_id: epicId,

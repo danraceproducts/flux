@@ -397,7 +397,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'update_task',
-        description: 'Update an existing task (change status, title, notes, epic, or dependencies)',
+        description: 'Update an existing task (change status, title, notes, epic, or dependencies). Note: tasks must be moved to "todo" before they can be started (moved to "in_progress").',
         inputSchema: {
           type: 'object',
           properties: {
@@ -407,7 +407,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             status: {
               type: 'string',
               enum: STATUSES,
-              description: 'New task status (todo, in_progress, done)',
+              description: 'New task status (planning, todo, in_progress, done). Tasks in "planning" cannot be moved directly to "in_progress".',
             },
             epic_id: { type: 'string', description: 'Assign to epic (or empty to unassign)' },
             depends_on: {
@@ -432,7 +432,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: 'move_task_status',
-        description: 'Quickly move a task to a new status (shortcut for update_task)',
+        description: 'Quickly move a task to a new status. Note: tasks must be in "todo" before they can be started (moved to "in_progress").',
         inputSchema: {
           type: 'object',
           properties: {
@@ -440,7 +440,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             status: {
               type: 'string',
               enum: STATUSES,
-              description: 'New status (todo, in_progress, done)',
+              description: 'New status (planning, todo, in_progress, done). Tasks in "planning" cannot be moved directly to "in_progress".',
             },
           },
           required: ['task_id', 'status'],
@@ -647,6 +647,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'update_task': {
+      // Validate workflow: tasks in 'planning' cannot go directly to 'in_progress'
+      if (args?.status === 'in_progress') {
+        const currentTask = getTask(args?.task_id as string);
+        if (currentTask?.status === 'planning') {
+          return {
+            content: [{ type: 'text', text: 'Cannot start a task that is still in planning. Move the task to "todo" first.' }],
+            isError: true,
+          };
+        }
+      }
       const updates: Record<string, unknown> = {};
       if (args?.title) updates.title = args.title;
       if (args?.notes !== undefined) updates.notes = args.notes;
@@ -678,6 +688,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
 
     case 'move_task_status': {
+      // Validate workflow: tasks in 'planning' cannot go directly to 'in_progress'
+      if (args?.status === 'in_progress') {
+        const currentTask = getTask(args?.task_id as string);
+        if (currentTask?.status === 'planning') {
+          return {
+            content: [{ type: 'text', text: 'Cannot start a task that is still in planning. Move the task to "todo" first.' }],
+            isError: true,
+          };
+        }
+      }
       const task = updateTask(args?.task_id as string, { status: args?.status as string });
       if (!task) {
         return { content: [{ type: 'text', text: 'Task not found' }], isError: true };

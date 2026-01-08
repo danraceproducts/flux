@@ -15,13 +15,6 @@ Ship with less chaos. Flux is a fast, simple Kanban board with MCP integration s
 
 ![Demo](./docs/demo.gif)
 
-## Roadmap
-
-- ✅ **Server-Sent Events (SSE)** - real-time updates for web while MCP is making changes
-- ✅ **Webhooks** - push task/epic/project events to other tools in real time
-- **Concurrency** - the shared single file (packages/data/flux.json) is a concurrency hot spot; concurrent writes potentially can clobber each other if two agents update at the same time
-- **Tests** - eek!
-
 ## Quick Start (Docker)
 
 macOS/Linux:
@@ -366,6 +359,16 @@ Create a webhook to post task updates to Slack:
 - **Backend:** Hono, Node.js
 - **MCP:** @modelcontextprotocol/sdk
 - **Build:** Vite, pnpm workspaces
+
+## Roadmap
+
+| Status | Feature | Description |
+|--------|---------|-------------|
+| ✅ | Server-Sent Events (SSE) | Real-time updates for web while MCP is making changes |
+| ✅ | Webhooks | Push task/epic/project events to other tools in real time |
+| ✅ | Planning Phase | Add planning to Kanban for ideation phase |
+| | Concurrency | The shared single file (packages/data/flux.json) is a concurrency hot spot; concurrent writes potentially can clobber each other if two agents update at the same time |
+| | Tests | eek! |
 
 ## Contributing
 

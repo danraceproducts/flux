@@ -485,7 +485,7 @@ export function Board({ projectId }: BoardProps) {
                   {!isCollapsed && (
                     <div class="px-4 pb-4">
                       {/* Column Headers */}
-                      <div class="grid grid-cols-3 gap-4 mb-3">
+                      <div class="grid grid-cols-4 gap-4 mb-3">
                         {STATUSES.map((status) => {
                           const config = STATUS_CONFIG[status];
                           const count = getColumnTasks(status, epic.id).length;
@@ -501,7 +501,7 @@ export function Board({ projectId }: BoardProps) {
                               <span class="text-base-content/40 text-sm">
                                 {count}
                               </span>
-                              {status === "todo" && (
+                              {status === "planning" && (
                                 <button
                                   class="ml-auto w-5 h-5 rounded flex items-center justify-center text-base-content/40 hover:text-base-content/70 hover:bg-base-200 transition-colors"
                                   onClick={(e) => {
@@ -530,7 +530,7 @@ export function Board({ projectId }: BoardProps) {
                       </div>
 
                       {/* Columns */}
-                      <div class="grid grid-cols-3 gap-4">
+                      <div class="grid grid-cols-4 gap-4">
                         {STATUSES.map((status) => (
                           <DroppableColumn
                             key={getDropZoneId(status, epic.id)}
@@ -592,7 +592,7 @@ export function Board({ projectId }: BoardProps) {
 
               {!collapsedEpics.has("unassigned") && (
                 <div class="px-4 pb-4">
-                  <div class="grid grid-cols-3 gap-4 mb-3">
+                  <div class="grid grid-cols-4 gap-4 mb-3">
                     {STATUSES.map((status) => {
                       const config = STATUS_CONFIG[status];
                       const count = getColumnTasks(status, undefined).length;
@@ -608,7 +608,7 @@ export function Board({ projectId }: BoardProps) {
                           <span class="text-base-content/40 text-sm">
                             {count}
                           </span>
-                          {status === "todo" && (
+                          {status === "planning" && (
                             <button
                               class="ml-auto w-5 h-5 rounded flex items-center justify-center text-base-content/40 hover:text-base-content/70 hover:bg-base-200 transition-colors"
                               onClick={(e) => {
@@ -636,7 +636,7 @@ export function Board({ projectId }: BoardProps) {
                     })}
                   </div>
 
-                  <div class="grid grid-cols-3 gap-4">
+                  <div class="grid grid-cols-4 gap-4">
                     {STATUSES.map((status) => (
                       <DroppableColumn
                         key={getDropZoneId(status, undefined)}

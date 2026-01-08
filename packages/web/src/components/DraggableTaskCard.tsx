@@ -63,6 +63,9 @@ export function DraggableTaskCard({
               Blocked
             </span>
           )}
+          {task.status === 'planning' && (
+            <progress class="progress progress-secondary w-8 flex-shrink-0" value={0} max={100} />
+          )}
           {task.status === 'todo' && (
             <progress class="progress w-8 flex-shrink-0" value={0} max={100} />
           )}
@@ -118,6 +121,12 @@ export function DraggableTaskCard({
       {/* Footer */}
       <div class="flex items-center justify-between mt-auto pt-2">
         <div class="flex items-center gap-2">
+          {task.status === 'planning' && (
+            <>
+              <progress class="progress progress-secondary w-10" value={0} max={100} />
+              <span class="badge badge-ghost badge-secondary badge-xs">Planning</span>
+            </>
+          )}
           {task.status === 'todo' && (
             <>
               <progress class="progress w-10" value={0} max={100} />
