@@ -1,0 +1,47 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Projects collection
+    match /projects/{projectId} {
+      allow read: if true; // Allow public read for now
+      allow write: if true; // Allow public write for now
+      // TODO: Implement proper authentication rules based on your requirements
+      // For production, consider:
+      // allow read, write: if isAuthenticated();
+    }
+
+    // Epics collection
+    match /epics/{epicId} {
+      allow read: if true;
+      allow write: if true;
+      // TODO: Implement proper authentication rules
+    }
+
+    // Tasks collection
+    match /tasks/{taskId} {
+      allow read: if true;
+      allow write: if true;
+      // TODO: Implement proper authentication rules
+    }
+
+    // Webhooks collection
+    match /webhooks/{webhookId} {
+      allow read: if true;
+      allow write: if true;
+      // TODO: Implement proper authentication rules
+    }
+
+    // Webhook deliveries collection
+    match /webhook_deliveries/{deliveryId} {
+      allow read: if true;
+      allow write: if true;
+      // TODO: Implement proper authentication rules
+    }
+  }
+}

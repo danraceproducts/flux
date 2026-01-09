@@ -105,6 +105,38 @@ docker run -i --rm -v ~/flux-data:/app/packages/data flux-mcp
 docker run -d -p 3000:3000 -v ~/flux-data:/app/packages/data --name flux-web flux-mcp node packages/server/dist/index.js
 ```
 
+## Cloud Deployment (Firebase + Vercel)
+
+Deploy Flux to the cloud with Firebase Firestore as the database and Vercel for hosting.
+
+### Quick Deploy
+
+1. **Set up Firebase**: Follow the detailed guide in [FIREBASE_SETUP.md](./FIREBASE_SETUP.md)
+2. **Deploy to Vercel**:
+   ```bash
+   # Install Vercel CLI
+   npm install -g vercel
+
+   # Build the project
+   pnpm install
+   pnpm build
+
+   # Deploy
+   vercel --prod
+   ```
+3. **Configure Environment Variables**: In Vercel dashboard, add your Firebase service account JSON as `FIREBASE_SERVICE_ACCOUNT`
+
+See [FIREBASE_SETUP.md](./FIREBASE_SETUP.md) for complete step-by-step instructions.
+
+### Storage Options
+
+Flux supports two storage backends:
+
+- **Firebase Firestore** (Production): Scalable cloud database, perfect for Vercel deployment
+- **File-based** (Development/Docker): Simple JSON file storage, great for local development
+
+The server automatically detects which backend to use based on environment variables.
+
 ## Installation (From Source)
 
 ### Prerequisites

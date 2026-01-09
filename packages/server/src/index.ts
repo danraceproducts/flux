@@ -34,10 +34,12 @@ import {
   getWebhookDeliveries,
   setWebhookEventHandler,
   triggerWebhooks,
+  createFirestoreAdapter,
   type Store,
   type WebhookEventType,
 } from '@flux/shared';
 import { handleWebhookEvent, testWebhookDelivery } from './webhook-service.js';
+import { initializeFirebase, isFirebaseConfigured } from './firebase.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -120,10 +122,36 @@ function createFileAdapter(): { read: () => void; write: () => void; data: Store
   };
 }
 
-// Initialize storage
-const fileAdapter = createFileAdapter();
-setStorageAdapter(fileAdapter);
-initStore();
+// Initialize storage - wrapped in async IIFE
+let storageAdapter: any;
+let useFirebase = false;
+
+await (async () => {
+  if (isFirebaseConfigured()) {
+    try {
+      console.log('Initializing Firebase storage adapter...');
+      const firestore = initializeFirebase();
+      storageAdapter = createFirestoreAdapter(firestore);
+      await storageAdapter.readAsync();
+      useFirebase = true;
+      console.log('✓ Using Firebase Firestore for data storage');
+    } catch (error) {
+      console.error('Failed to initialize Firebase, falling back to file storage:', error);
+      storageAdapter = createFileAdapter();
+      storageAdapter.read();
+    }
+  } else {
+    console.log('✓ Using file-based storage (set FIREBASE_SERVICE_ACCOUNT for Firebase)');
+    storageAdapter = createFileAdapter();
+  }
+
+  setStorageAdapter(storageAdapter);
+
+  // Initialize store for file adapter
+  if (!useFirebase) {
+    initStore();
+  }
+})();
 
 // Set up webhook event handler
 setWebhookEventHandler(handleWebhookEvent);
@@ -179,22 +207,25 @@ const notifyDataChange = () => {
   }, 75);
 };
 
-// Use watchFile with polling - more reliable than watch() on macOS with atomic renames
-let lastMtime = 0;
-try {
-  lastMtime = statSync(DATA_FILE).mtimeMs;
-} catch {
-  // File may not exist yet
-}
-
-watchFile(DATA_FILE, { interval: 100 }, (curr) => {
-  // Only trigger if modification time actually changed (avoids duplicate events)
-  if (curr.mtimeMs !== lastMtime) {
-    lastMtime = curr.mtimeMs;
-    fileAdapter.read();  // Reload data from disk before notifying clients
-    notifyDataChange();
+// Use watchFile with polling only for file-based storage
+// Firebase uses real-time listeners so file watching is not needed
+if (!useFirebase) {
+  let lastMtime = 0;
+  try {
+    lastMtime = statSync(DATA_FILE).mtimeMs;
+  } catch {
+    // File may not exist yet
   }
-});
+
+  watchFile(DATA_FILE, { interval: 100 }, (curr) => {
+    // Only trigger if modification time actually changed (avoids duplicate events)
+    if (curr.mtimeMs !== lastMtime) {
+      lastMtime = curr.mtimeMs;
+      storageAdapter.read();  // Reload data from disk before notifying clients
+      notifyDataChange();
+    }
+  });
+}
 
 app.get('/api/events', () => {
   let clientController: ReadableStreamDefaultController<Uint8Array> | null = null;
