@@ -35,8 +35,34 @@ import {
   setWebhookEventHandler,
   triggerWebhooks,
   createFirestoreAdapter,
+  // Product imports
+  listProducts,
+  getProduct,
+  getProductBySku,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  getProductCategories,
+  getProductBrands,
+  searchProducts,
+  // Customer imports
+  listCustomers,
+  getCustomer,
+  getCustomerByEmail,
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+  getCustomerTags,
+  getCustomerSources,
+  searchCustomers,
   type Store,
   type WebhookEventType,
+  type ProductFilters,
+  type CreateProductInput,
+  type UpdateProductInput,
+  type CustomerFilters,
+  type CreateCustomerInput,
+  type UpdateCustomerInput,
 } from '@flux/shared';
 import { handleWebhookEvent, testWebhookDelivery } from './webhook-service.js';
 import { initializeFirebase, isFirebaseConfigured } from './firebase.js';
@@ -486,6 +512,192 @@ app.get('/api/webhook-deliveries', (c) => {
   const limit = parseInt(c.req.query('limit') || '50');
   const deliveries = getWebhookDeliveries(undefined, limit);
   return c.json(deliveries);
+});
+
+// ============ Product Routes ============
+
+// Get unique categories
+app.get('/api/products/categories', (c) => {
+  const categories = getProductCategories();
+  return c.json(categories);
+});
+
+// Get unique brands
+app.get('/api/products/brands', (c) => {
+  const brands = getProductBrands();
+  return c.json(brands);
+});
+
+// List products with optional filters
+app.get('/api/products', (c) => {
+  const filters: ProductFilters = {};
+
+  const category = c.req.query('category');
+  const brand = c.req.query('brand');
+  const isActive = c.req.query('isActive');
+  const search = c.req.query('search');
+  const minPrice = c.req.query('minPrice');
+  const maxPrice = c.req.query('maxPrice');
+
+  if (category) filters.category = category;
+  if (brand) filters.brand = brand;
+  if (isActive !== undefined && isActive !== '') {
+    filters.isActive = isActive === 'true';
+  }
+  if (search) filters.search = search;
+  if (minPrice) filters.minPrice = parseFloat(minPrice);
+  if (maxPrice) filters.maxPrice = parseFloat(maxPrice);
+
+  const products = listProducts(filters);
+  return c.json(products);
+});
+
+// Get single product
+app.get('/api/products/:id', (c) => {
+  const product = getProduct(c.req.param('id'));
+  if (!product) return c.json({ error: 'Product not found' }, 404);
+  return c.json(product);
+});
+
+// Create product
+app.post('/api/products', async (c) => {
+  const body = await c.req.json() as CreateProductInput;
+
+  if (!body.sku || !body.name || !body.category || body.sellPrice === undefined) {
+    return c.json({ error: 'Missing required fields: sku, name, category, sellPrice' }, 400);
+  }
+
+  // Check for duplicate SKU
+  const existingProduct = getProductBySku(body.sku);
+  if (existingProduct) {
+    return c.json({ error: `Product with SKU "${body.sku}" already exists` }, 400);
+  }
+
+  const product = createProduct(body);
+  // Trigger webhook
+  triggerWebhooks('product.created', { product });
+  return c.json(product, 201);
+});
+
+// Update product
+app.patch('/api/products/:id', async (c) => {
+  const body = await c.req.json() as UpdateProductInput;
+  const previous = getProduct(c.req.param('id'));
+
+  // Check for duplicate SKU if updating SKU
+  if (body.sku && previous) {
+    const existingProduct = getProductBySku(body.sku);
+    if (existingProduct && existingProduct.id !== previous.id) {
+      return c.json({ error: `Product with SKU "${body.sku}" already exists` }, 400);
+    }
+  }
+
+  const product = updateProduct(c.req.param('id'), body);
+  if (!product) return c.json({ error: 'Product not found' }, 404);
+  // Trigger webhook
+  triggerWebhooks('product.updated', { product, previous });
+  return c.json(product);
+});
+
+// Delete product (soft delete)
+app.delete('/api/products/:id', (c) => {
+  const product = getProduct(c.req.param('id'));
+  const success = deleteProduct(c.req.param('id'));
+  if (!success) return c.json({ error: 'Product not found' }, 404);
+  // Trigger webhook
+  if (product) {
+    triggerWebhooks('product.deleted', { product });
+  }
+  return c.json({ success: true });
+});
+
+// ============ Customer Routes ============
+
+// Get unique tags
+app.get('/api/customers/tags', (c) => {
+  const tags = getCustomerTags();
+  return c.json(tags);
+});
+
+// Get unique sources
+app.get('/api/customers/sources', (c) => {
+  const sources = getCustomerSources();
+  return c.json(sources);
+});
+
+// List customers with optional filters
+app.get('/api/customers', (c) => {
+  const filters: CustomerFilters = {};
+
+  const type = c.req.query('type');
+  const tag = c.req.query('tag');
+  const source = c.req.query('source');
+  const isActive = c.req.query('isActive');
+  const search = c.req.query('search');
+
+  if (type === 'individual' || type === 'business') filters.type = type;
+  if (tag) filters.tag = tag;
+  if (source) filters.source = source;
+  if (isActive !== undefined && isActive !== '') {
+    filters.isActive = isActive === 'true';
+  }
+  if (search) filters.search = search;
+
+  const customers = listCustomers(filters);
+  return c.json(customers);
+});
+
+// Get single customer
+app.get('/api/customers/:id', (c) => {
+  const customer = getCustomer(c.req.param('id'));
+  if (!customer) return c.json({ error: 'Customer not found' }, 404);
+  return c.json(customer);
+});
+
+// Create customer
+app.post('/api/customers', async (c) => {
+  const body = await c.req.json() as CreateCustomerInput;
+
+  if (!body.type || !body.name) {
+    return c.json({ error: 'Missing required fields: type, name' }, 400);
+  }
+
+  if (body.type !== 'individual' && body.type !== 'business') {
+    return c.json({ error: 'Type must be "individual" or "business"' }, 400);
+  }
+
+  const customer = createCustomer(body);
+  // Trigger webhook
+  triggerWebhooks('customer.created', { customer });
+  return c.json(customer, 201);
+});
+
+// Update customer
+app.patch('/api/customers/:id', async (c) => {
+  const body = await c.req.json() as UpdateCustomerInput;
+  const previous = getCustomer(c.req.param('id'));
+
+  if (body.type && body.type !== 'individual' && body.type !== 'business') {
+    return c.json({ error: 'Type must be "individual" or "business"' }, 400);
+  }
+
+  const customer = updateCustomer(c.req.param('id'), body);
+  if (!customer) return c.json({ error: 'Customer not found' }, 404);
+  // Trigger webhook
+  triggerWebhooks('customer.updated', { customer, previous });
+  return c.json(customer);
+});
+
+// Delete customer (soft delete)
+app.delete('/api/customers/:id', (c) => {
+  const customer = getCustomer(c.req.param('id'));
+  const success = deleteCustomer(c.req.param('id'));
+  if (!success) return c.json({ error: 'Customer not found' }, 404);
+  // Trigger webhook
+  if (customer) {
+    triggerWebhooks('customer.deleted', { customer });
+  }
+  return c.json({ success: true });
 });
 
 // Serve static files from web build (production)

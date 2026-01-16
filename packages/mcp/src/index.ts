@@ -36,10 +36,29 @@ import {
   updateWebhook,
   deleteWebhook,
   getWebhookDeliveries,
+  // Product imports
+  listProducts,
+  getProduct,
+  getProductBySku,
+  createProduct,
+  updateProduct,
+  deleteProduct,
+  searchProducts,
+  // Customer imports
+  listCustomers,
+  getCustomer,
+  createCustomer,
+  updateCustomer,
+  deleteCustomer,
+  searchCustomers,
   type Store,
   STATUSES,
   WEBHOOK_EVENT_TYPES,
   type WebhookEventType,
+  type CreateProductInput,
+  type ProductFilters,
+  type CreateCustomerInput,
+  type CustomerFilters,
 } from '@flux/shared';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -519,6 +538,203 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['webhook_id'],
         },
       },
+
+      // Product tools
+      {
+        name: 'list_products',
+        description: 'List products with optional filters',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            category: { type: 'string', description: 'Filter by category (e.g., "Brakes", "Suspension")' },
+            brand: { type: 'string', description: 'Filter by brand' },
+            isActive: { type: 'boolean', description: 'Filter by active status' },
+            search: { type: 'string', description: 'Search SKU, name, description, or fitment' },
+          },
+        },
+      },
+      {
+        name: 'create_product',
+        description: 'Add a new product to the catalog',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            sku: { type: 'string', description: 'Product SKU (e.g., "BK-WIL-001")' },
+            name: { type: 'string', description: 'Product name' },
+            category: { type: 'string', description: 'Product category (e.g., "Brakes", "Suspension", "Drivetrain")' },
+            sellPrice: { type: 'number', description: 'Selling price in AUD' },
+            costPrice: { type: 'number', description: 'Cost price (what you pay)' },
+            brand: { type: 'string', description: 'Brand name' },
+            subcategory: { type: 'string', description: 'Subcategory' },
+            description: { type: 'string', description: 'Product description' },
+            fitment: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Vehicle fitment list (e.g., ["Nissan Patrol Y62", "Toyota LC200"])',
+            },
+          },
+          required: ['sku', 'name', 'category', 'sellPrice'],
+        },
+      },
+      {
+        name: 'get_product',
+        description: 'Get a product by ID or SKU',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Product ID' },
+            sku: { type: 'string', description: 'Product SKU' },
+          },
+        },
+      },
+      {
+        name: 'update_product',
+        description: 'Update an existing product',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Product ID (required)' },
+            sku: { type: 'string', description: 'New SKU' },
+            name: { type: 'string', description: 'New name' },
+            category: { type: 'string', description: 'New category' },
+            subcategory: { type: 'string', description: 'New subcategory' },
+            brand: { type: 'string', description: 'New brand' },
+            costPrice: { type: 'number', description: 'New cost price' },
+            sellPrice: { type: 'number', description: 'New sell price' },
+            description: { type: 'string', description: 'New description' },
+            fitment: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'New fitment list',
+            },
+            isActive: { type: 'boolean', description: 'Active status' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'search_products',
+        description: 'Search products by SKU, name, description, or fitment',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'delete_product',
+        description: 'Deactivate a product (soft delete)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Product ID to delete' },
+          },
+          required: ['id'],
+        },
+      },
+
+      // Customer tools
+      {
+        name: 'list_customers',
+        description: 'List customers with optional filters',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['individual', 'business'], description: 'Filter by customer type' },
+            tag: { type: 'string', description: 'Filter by tag (e.g., "VIP", "Trade")' },
+            source: { type: 'string', description: 'Filter by source (e.g., "Referral", "Website")' },
+            isActive: { type: 'boolean', description: 'Filter by active status' },
+            search: { type: 'string', description: 'Search name, email, phone, or notes' },
+          },
+        },
+      },
+      {
+        name: 'create_customer',
+        description: 'Add a new customer to the CRM',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            type: { type: 'string', enum: ['individual', 'business'], description: 'Customer type' },
+            name: { type: 'string', description: 'Full name or business name' },
+            contactName: { type: 'string', description: 'Primary contact name (for businesses)' },
+            email: { type: 'string', description: 'Email address' },
+            phone: { type: 'string', description: 'Phone number' },
+            mobile: { type: 'string', description: 'Mobile number' },
+            street: { type: 'string', description: 'Street address' },
+            city: { type: 'string', description: 'City' },
+            state: { type: 'string', description: 'State' },
+            postcode: { type: 'string', description: 'Postcode' },
+            country: { type: 'string', description: 'Country' },
+            abn: { type: 'string', description: 'Australian Business Number' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Tags (e.g., ["VIP", "Trade"])' },
+            source: { type: 'string', description: 'Lead source (e.g., "Referral", "Website")' },
+            notes: { type: 'string', description: 'Notes about the customer' },
+          },
+          required: ['type', 'name'],
+        },
+      },
+      {
+        name: 'get_customer',
+        description: 'Get a customer by ID',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Customer ID' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'update_customer',
+        description: 'Update an existing customer',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Customer ID (required)' },
+            type: { type: 'string', enum: ['individual', 'business'], description: 'Customer type' },
+            name: { type: 'string', description: 'Full name or business name' },
+            contactName: { type: 'string', description: 'Primary contact name' },
+            email: { type: 'string', description: 'Email address' },
+            phone: { type: 'string', description: 'Phone number' },
+            mobile: { type: 'string', description: 'Mobile number' },
+            street: { type: 'string', description: 'Street address' },
+            city: { type: 'string', description: 'City' },
+            state: { type: 'string', description: 'State' },
+            postcode: { type: 'string', description: 'Postcode' },
+            country: { type: 'string', description: 'Country' },
+            abn: { type: 'string', description: 'Australian Business Number' },
+            tags: { type: 'array', items: { type: 'string' }, description: 'Tags' },
+            source: { type: 'string', description: 'Lead source' },
+            notes: { type: 'string', description: 'Notes' },
+            isActive: { type: 'boolean', description: 'Active status' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'search_customers',
+        description: 'Search customers by name, email, phone, or notes',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'delete_customer',
+        description: 'Deactivate a customer (soft delete)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Customer ID to delete' },
+          },
+          required: ['id'],
+        },
+      },
     ],
   };
 });
@@ -767,6 +983,304 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const deliveries = getWebhookDeliveries(args?.webhook_id as string, limit);
       return {
         content: [{ type: 'text', text: JSON.stringify(deliveries, null, 2) }],
+      };
+    }
+
+    // Product operations
+    case 'list_products': {
+      const filters: ProductFilters = {};
+      if (args?.category) filters.category = args.category as string;
+      if (args?.brand) filters.brand = args.brand as string;
+      if (args?.isActive !== undefined) filters.isActive = args.isActive as boolean;
+      if (args?.search) filters.search = args.search as string;
+
+      const products = listProducts(filters);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(products, null, 2) }],
+      };
+    }
+
+    case 'create_product': {
+      const input: CreateProductInput = {
+        sku: args?.sku as string,
+        name: args?.name as string,
+        category: args?.category as string,
+        sellPrice: args?.sellPrice as number,
+        costPrice: args?.costPrice as number | undefined,
+        brand: args?.brand as string | undefined,
+        subcategory: args?.subcategory as string | undefined,
+        description: args?.description as string | undefined,
+        fitment: args?.fitment as string[] | undefined,
+      };
+
+      // Check for duplicate SKU
+      const existingProduct = getProductBySku(input.sku);
+      if (existingProduct) {
+        return {
+          content: [{ type: 'text', text: `Error: Product with SKU "${input.sku}" already exists` }],
+          isError: true,
+        };
+      }
+
+      const product = createProduct(input);
+      return {
+        content: [
+          { type: 'text', text: `Created product "${product.name}" (SKU: ${product.sku}) with ID: ${product.id}` },
+        ],
+      };
+    }
+
+    case 'get_product': {
+      let product = null;
+      if (args?.id) {
+        product = getProduct(args.id as string);
+      } else if (args?.sku) {
+        product = getProductBySku(args.sku as string);
+      } else {
+        return {
+          content: [{ type: 'text', text: 'Error: Either id or sku is required' }],
+          isError: true,
+        };
+      }
+
+      if (!product) {
+        return {
+          content: [{ type: 'text', text: 'Product not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(product, null, 2) }],
+      };
+    }
+
+    case 'update_product': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      // Check for duplicate SKU if updating SKU
+      if (args?.sku) {
+        const existingProduct = getProductBySku(args.sku as string);
+        if (existingProduct && existingProduct.id !== args.id) {
+          return {
+            content: [{ type: 'text', text: `Error: Product with SKU "${args.sku}" already exists` }],
+            isError: true,
+          };
+        }
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (args?.sku) updates.sku = args.sku;
+      if (args?.name) updates.name = args.name;
+      if (args?.category) updates.category = args.category;
+      if (args?.subcategory !== undefined) updates.subcategory = args.subcategory;
+      if (args?.brand !== undefined) updates.brand = args.brand;
+      if (args?.costPrice !== undefined) updates.costPrice = args.costPrice;
+      if (args?.sellPrice !== undefined) updates.sellPrice = args.sellPrice;
+      if (args?.description !== undefined) updates.description = args.description;
+      if (args?.fitment) updates.fitment = args.fitment;
+      if (args?.isActive !== undefined) updates.isActive = args.isActive;
+
+      const product = updateProduct(args.id as string, updates);
+      if (!product) {
+        return {
+          content: [{ type: 'text', text: 'Product not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: `Updated product: ${JSON.stringify(product, null, 2)}` }],
+      };
+    }
+
+    case 'search_products': {
+      if (!args?.query) {
+        return {
+          content: [{ type: 'text', text: 'Error: query is required' }],
+          isError: true,
+        };
+      }
+
+      const products = searchProducts(args.query as string);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(products, null, 2) }],
+      };
+    }
+
+    case 'delete_product': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const success = deleteProduct(args.id as string);
+      if (!success) {
+        return {
+          content: [{ type: 'text', text: 'Product not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: `Product ${args.id} has been deactivated` }],
+      };
+    }
+
+    // Customer operations
+    case 'list_customers': {
+      const filters: CustomerFilters = {};
+      if (args?.type) filters.type = args.type as 'individual' | 'business';
+      if (args?.tag) filters.tag = args.tag as string;
+      if (args?.source) filters.source = args.source as string;
+      if (args?.isActive !== undefined) filters.isActive = args.isActive as boolean;
+      if (args?.search) filters.search = args.search as string;
+
+      const customers = listCustomers(filters);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(customers, null, 2) }],
+      };
+    }
+
+    case 'create_customer': {
+      const input: CreateCustomerInput = {
+        type: args?.type as 'individual' | 'business',
+        name: args?.name as string,
+        contactName: args?.contactName as string | undefined,
+        email: args?.email as string | undefined,
+        phone: args?.phone as string | undefined,
+        mobile: args?.mobile as string | undefined,
+        abn: args?.abn as string | undefined,
+        tags: args?.tags as string[] | undefined,
+        source: args?.source as string | undefined,
+        notes: args?.notes as string | undefined,
+      };
+
+      // Build address if any address fields provided
+      if (args?.street || args?.city || args?.state || args?.postcode || args?.country) {
+        input.address = {
+          street: args?.street as string | undefined,
+          city: args?.city as string | undefined,
+          state: args?.state as string | undefined,
+          postcode: args?.postcode as string | undefined,
+          country: args?.country as string | undefined,
+        };
+      }
+
+      const customer = createCustomer(input);
+      return {
+        content: [
+          { type: 'text', text: `Created customer "${customer.name}" with ID: ${customer.id}` },
+        ],
+      };
+    }
+
+    case 'get_customer': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const customer = getCustomer(args.id as string);
+      if (!customer) {
+        return {
+          content: [{ type: 'text', text: 'Customer not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(customer, null, 2) }],
+      };
+    }
+
+    case 'update_customer': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (args?.type) updates.type = args.type;
+      if (args?.name) updates.name = args.name;
+      if (args?.contactName !== undefined) updates.contactName = args.contactName;
+      if (args?.email !== undefined) updates.email = args.email;
+      if (args?.phone !== undefined) updates.phone = args.phone;
+      if (args?.mobile !== undefined) updates.mobile = args.mobile;
+      if (args?.abn !== undefined) updates.abn = args.abn;
+      if (args?.tags) updates.tags = args.tags;
+      if (args?.source !== undefined) updates.source = args.source;
+      if (args?.notes !== undefined) updates.notes = args.notes;
+      if (args?.isActive !== undefined) updates.isActive = args.isActive;
+
+      // Build address if any address fields provided
+      if (args?.street !== undefined || args?.city !== undefined || args?.state !== undefined ||
+          args?.postcode !== undefined || args?.country !== undefined) {
+        updates.address = {
+          street: args?.street as string | undefined,
+          city: args?.city as string | undefined,
+          state: args?.state as string | undefined,
+          postcode: args?.postcode as string | undefined,
+          country: args?.country as string | undefined,
+        };
+      }
+
+      const customer = updateCustomer(args.id as string, updates);
+      if (!customer) {
+        return {
+          content: [{ type: 'text', text: 'Customer not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: `Updated customer: ${JSON.stringify(customer, null, 2)}` }],
+      };
+    }
+
+    case 'search_customers': {
+      if (!args?.query) {
+        return {
+          content: [{ type: 'text', text: 'Error: query is required' }],
+          isError: true,
+        };
+      }
+
+      const customers = searchCustomers(args.query as string);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(customers, null, 2) }],
+      };
+    }
+
+    case 'delete_customer': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const success = deleteCustomer(args.id as string);
+      if (!success) {
+        return {
+          content: [{ type: 'text', text: 'Customer not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: `Customer ${args.id} has been deactivated` }],
       };
     }
 

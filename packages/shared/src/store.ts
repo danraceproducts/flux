@@ -1,4 +1,4 @@
-import type { Task, Epic, Project, Store, Webhook, WebhookDelivery, WebhookEventType, WebhookPayload, StoreWithWebhooks } from './types.js';
+import type { Task, Epic, Project, Store, Webhook, WebhookDelivery, WebhookEventType, WebhookPayload, StoreWithWebhooks, Product, CreateProductInput, UpdateProductInput, ProductFilters, Customer, CreateCustomerInput, UpdateCustomerInput, CustomerFilters } from './types.js';
 
 // Storage adapter interface - can be localStorage or file-based
 export interface StorageAdapter {
@@ -52,6 +52,8 @@ export function initStore(): Store {
   // Ensure arrays exist
   if (!Array.isArray(data.tasks)) data.tasks = [];
   if (!Array.isArray(data.epics)) data.epics = [];
+  if (!Array.isArray(data.products)) data.products = [];
+  if (!Array.isArray(data.customers)) data.customers = [];
 
   return db.data;
 }
@@ -506,4 +508,308 @@ export async function triggerWebhooks(
       console.error(`Failed to trigger webhook ${webhook.id}:`, error);
     }
   }
+}
+
+// ============ Product Operations ============
+
+// Ensure products array exists
+function ensureProductsArray(): void {
+  if (!db.data.products) db.data.products = [];
+}
+
+export function getProducts(): Product[] {
+  ensureProductsArray();
+  return [...(db.data.products || [])];
+}
+
+export function listProducts(filters?: ProductFilters): Product[] {
+  ensureProductsArray();
+  let products = [...(db.data.products || [])];
+
+  if (filters) {
+    if (filters.category) {
+      products = products.filter(p => p.category.toLowerCase() === filters.category!.toLowerCase());
+    }
+    if (filters.brand) {
+      products = products.filter(p => p.brand.toLowerCase() === filters.brand!.toLowerCase());
+    }
+    if (filters.isActive !== undefined) {
+      products = products.filter(p => p.isActive === filters.isActive);
+    }
+    if (filters.minPrice !== undefined) {
+      products = products.filter(p => p.sellPrice >= filters.minPrice!);
+    }
+    if (filters.maxPrice !== undefined) {
+      products = products.filter(p => p.sellPrice <= filters.maxPrice!);
+    }
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      products = products.filter(p =>
+        p.sku.toLowerCase().includes(searchLower) ||
+        p.name.toLowerCase().includes(searchLower) ||
+        p.description.toLowerCase().includes(searchLower) ||
+        p.fitment.some(f => f.toLowerCase().includes(searchLower))
+      );
+    }
+  }
+
+  return products;
+}
+
+export function getProduct(id: string): Product | undefined {
+  ensureProductsArray();
+  return db.data.products?.find(p => p.id === id);
+}
+
+export function getProductBySku(sku: string): Product | undefined {
+  ensureProductsArray();
+  return db.data.products?.find(p => p.sku.toLowerCase() === sku.toLowerCase());
+}
+
+export function createProduct(input: CreateProductInput): Product {
+  ensureProductsArray();
+  const now = new Date().toISOString();
+  const product: Product = {
+    id: generateId(),
+    sku: input.sku,
+    name: input.name,
+    category: input.category,
+    subcategory: input.subcategory || '',
+    brand: input.brand || '',
+    costPrice: input.costPrice || 0,
+    sellPrice: input.sellPrice,
+    currency: input.currency || 'AUD',
+    description: input.description || '',
+    fitment: input.fitment || [],
+    isActive: input.isActive !== undefined ? input.isActive : true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.data.products!.push(product);
+  db.write();
+  return product;
+}
+
+export function updateProduct(id: string, input: UpdateProductInput): Product | undefined {
+  ensureProductsArray();
+  const index = db.data.products!.findIndex(p => p.id === id);
+  if (index === -1) return undefined;
+
+  const product = db.data.products![index];
+  const updated: Product = {
+    ...product,
+    ...input,
+    updatedAt: new Date().toISOString(),
+  };
+  db.data.products![index] = updated;
+  db.write();
+  return updated;
+}
+
+export function deleteProduct(id: string): boolean {
+  ensureProductsArray();
+  const index = db.data.products!.findIndex(p => p.id === id);
+  if (index === -1) return false;
+
+  // Soft delete - set isActive to false
+  db.data.products![index].isActive = false;
+  db.data.products![index].updatedAt = new Date().toISOString();
+  db.write();
+  return true;
+}
+
+export function hardDeleteProduct(id: string): boolean {
+  ensureProductsArray();
+  const index = db.data.products!.findIndex(p => p.id === id);
+  if (index === -1) return false;
+
+  db.data.products!.splice(index, 1);
+  db.write();
+  return true;
+}
+
+export function getProductCategories(): string[] {
+  ensureProductsArray();
+  const categories = new Set<string>();
+  for (const product of db.data.products || []) {
+    if (product.category) {
+      categories.add(product.category);
+    }
+  }
+  return [...categories].sort();
+}
+
+export function getProductBrands(): string[] {
+  ensureProductsArray();
+  const brands = new Set<string>();
+  for (const product of db.data.products || []) {
+    if (product.brand) {
+      brands.add(product.brand);
+    }
+  }
+  return [...brands].sort();
+}
+
+export function searchProducts(query: string): Product[] {
+  ensureProductsArray();
+  const searchLower = query.toLowerCase();
+  return (db.data.products || []).filter(p =>
+    p.sku.toLowerCase().includes(searchLower) ||
+    p.name.toLowerCase().includes(searchLower) ||
+    p.description.toLowerCase().includes(searchLower) ||
+    p.fitment.some(f => f.toLowerCase().includes(searchLower))
+  );
+}
+
+// ============ Customer Operations ============
+
+// Ensure customers array exists
+function ensureCustomersArray(): void {
+  if (!db.data.customers) db.data.customers = [];
+}
+
+export function getCustomers(): Customer[] {
+  ensureCustomersArray();
+  return [...(db.data.customers || [])];
+}
+
+export function listCustomers(filters?: CustomerFilters): Customer[] {
+  ensureCustomersArray();
+  let customers = [...(db.data.customers || [])];
+
+  if (filters) {
+    if (filters.type) {
+      customers = customers.filter(c => c.type === filters.type);
+    }
+    if (filters.tag) {
+      customers = customers.filter(c => c.tags?.includes(filters.tag!));
+    }
+    if (filters.source) {
+      customers = customers.filter(c => c.source?.toLowerCase() === filters.source!.toLowerCase());
+    }
+    if (filters.isActive !== undefined) {
+      customers = customers.filter(c => c.isActive === filters.isActive);
+    }
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      customers = customers.filter(c =>
+        c.name.toLowerCase().includes(searchLower) ||
+        c.contactName?.toLowerCase().includes(searchLower) ||
+        c.email?.toLowerCase().includes(searchLower) ||
+        c.phone?.toLowerCase().includes(searchLower) ||
+        c.mobile?.toLowerCase().includes(searchLower) ||
+        c.notes?.toLowerCase().includes(searchLower)
+      );
+    }
+  }
+
+  return customers;
+}
+
+export function getCustomer(id: string): Customer | undefined {
+  ensureCustomersArray();
+  return db.data.customers?.find(c => c.id === id);
+}
+
+export function getCustomerByEmail(email: string): Customer | undefined {
+  ensureCustomersArray();
+  return db.data.customers?.find(c => c.email?.toLowerCase() === email.toLowerCase());
+}
+
+export function createCustomer(input: CreateCustomerInput): Customer {
+  ensureCustomersArray();
+  const now = new Date().toISOString();
+  const customer: Customer = {
+    id: generateId(),
+    type: input.type,
+    name: input.name,
+    contactName: input.contactName,
+    email: input.email,
+    phone: input.phone,
+    mobile: input.mobile,
+    address: input.address,
+    abn: input.abn,
+    tags: input.tags || [],
+    source: input.source,
+    notes: input.notes,
+    isActive: input.isActive !== undefined ? input.isActive : true,
+    createdAt: now,
+    updatedAt: now,
+  };
+  db.data.customers!.push(customer);
+  db.write();
+  return customer;
+}
+
+export function updateCustomer(id: string, input: UpdateCustomerInput): Customer | undefined {
+  ensureCustomersArray();
+  const index = db.data.customers!.findIndex(c => c.id === id);
+  if (index === -1) return undefined;
+
+  const customer = db.data.customers![index];
+  const updated: Customer = {
+    ...customer,
+    ...input,
+    updatedAt: new Date().toISOString(),
+  };
+  db.data.customers![index] = updated;
+  db.write();
+  return updated;
+}
+
+export function deleteCustomer(id: string): boolean {
+  ensureCustomersArray();
+  const index = db.data.customers!.findIndex(c => c.id === id);
+  if (index === -1) return false;
+
+  // Soft delete - set isActive to false
+  db.data.customers![index].isActive = false;
+  db.data.customers![index].updatedAt = new Date().toISOString();
+  db.write();
+  return true;
+}
+
+export function hardDeleteCustomer(id: string): boolean {
+  ensureCustomersArray();
+  const index = db.data.customers!.findIndex(c => c.id === id);
+  if (index === -1) return false;
+
+  db.data.customers!.splice(index, 1);
+  db.write();
+  return true;
+}
+
+export function getCustomerTags(): string[] {
+  ensureCustomersArray();
+  const tags = new Set<string>();
+  for (const customer of db.data.customers || []) {
+    for (const tag of customer.tags || []) {
+      tags.add(tag);
+    }
+  }
+  return [...tags].sort();
+}
+
+export function getCustomerSources(): string[] {
+  ensureCustomersArray();
+  const sources = new Set<string>();
+  for (const customer of db.data.customers || []) {
+    if (customer.source) {
+      sources.add(customer.source);
+    }
+  }
+  return [...sources].sort();
+}
+
+export function searchCustomers(query: string): Customer[] {
+  ensureCustomersArray();
+  const searchLower = query.toLowerCase();
+  return (db.data.customers || []).filter(c =>
+    c.name.toLowerCase().includes(searchLower) ||
+    c.contactName?.toLowerCase().includes(searchLower) ||
+    c.email?.toLowerCase().includes(searchLower) ||
+    c.phone?.toLowerCase().includes(searchLower) ||
+    c.mobile?.toLowerCase().includes(searchLower) ||
+    c.notes?.toLowerCase().includes(searchLower)
+  );
 }
