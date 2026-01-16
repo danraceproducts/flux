@@ -27,3 +27,4 @@ dist-ssr
 
 # Flux
 packages/data/flux.json
+.vercel

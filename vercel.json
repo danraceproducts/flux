@@ -1,10 +1,23 @@
 {
   "version": 2,
-  "buildCommand": "pnpm install && pnpm build",
-  "installCommand": "npm i -g pnpm && pnpm install",
-  "outputDirectory": "packages/web/dist",
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "builds": [
+    {
+      "src": "packages/server/dist/index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "packages/web/dist/**",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "packages/server/dist/index.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "packages/web/dist/$1"
+    }
   ]
 }
