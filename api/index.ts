@@ -27,6 +27,7 @@ import {
   getWebhookDeliveries,
   triggerWebhooks,
   createFirestoreAdapter,
+  flushFirestoreWrites,
   listProducts,
   getProduct,
   getProductBySku,
@@ -60,11 +61,13 @@ import {
   type CreateQuoteInput,
   type UpdateQuoteInput,
   type QuoteStatus,
+  type FirestoreAdapter,
 } from '@flux/shared';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
 let initialized = false;
+let adapter: FirestoreAdapter | null = null;
 
 async function init() {
   if (initialized) return;
@@ -76,10 +79,20 @@ async function init() {
     initializeApp({ credential: cert(JSON.parse(creds)) });
   }
 
-  const adapter = createFirestoreAdapter(getFirestore());
+  adapter = createFirestoreAdapter(getFirestore());
   setStorageAdapter(adapter);
-  await (adapter as any).readAsync();
+  await adapter.readAsync();
   initialized = true;
+}
+
+async function flush() {
+  if (adapter) await flushFirestoreWrites(adapter);
+}
+
+// Helper to flush before sending response for mutations
+async function send(res: VercelResponse, status: number, data: any) {
+  await flush();
+  return res.status(status).json(data);
 }
 
 function cors(res: VercelResponse) {
@@ -111,7 +124,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (path === '/projects' && method === 'POST') {
       const p = createProject(body.name, body.description);
       triggerWebhooks('project.created', { project: p });
-      return res.status(201).json(p);
+      return send(res, 201, p);
     }
 
     let m = path.match(/^\/projects\/([^/]+)$/);
@@ -126,13 +139,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const p = updateProject(id, body);
         if (!p) return res.status(404).json({ error: 'Not found' });
         triggerWebhooks('project.updated', { project: p, previous: prev }, p.id);
-        return res.json(p);
+        return send(res, 200, p);
       }
       if (method === 'DELETE') {
         const p = getProject(id);
         deleteProject(id);
         if (p) triggerWebhooks('project.deleted', { project: p }, p.id);
-        return res.json({ success: true });
+        return send(res, 200, { success: true });
       }
     }
 
@@ -143,7 +156,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'POST') {
         const e = createEpic(m[1], body.title, body.notes);
         triggerWebhooks('epic.created', { epic: e }, m[1]);
-        return res.status(201).json(e);
+        return send(res, 201, e);
       }
     }
 
@@ -159,13 +172,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const e = updateEpic(id, body);
         if (!e) return res.status(404).json({ error: 'Not found' });
         triggerWebhooks('epic.updated', { epic: e, previous: prev }, e.project_id);
-        return res.json(e);
+        return send(res, 200, e);
       }
       if (method === 'DELETE') {
         const e = getEpic(id);
         if (!deleteEpic(id)) return res.status(404).json({ error: 'Not found' });
         if (e) triggerWebhooks('epic.deleted', { epic: e }, e.project_id);
-        return res.json({ success: true });
+        return send(res, 200, { success: true });
       }
     }
 
@@ -178,7 +191,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (method === 'POST') {
         const t = createTask(m[1], body.title, body.epic_id, body.notes);
         triggerWebhooks('task.created', { task: t }, m[1]);
-        return res.status(201).json(t);
+        return send(res, 201, t);
       }
     }
 
@@ -197,26 +210,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         if (prev && body.status && prev.status !== body.status) events.push('task.status_changed');
         if (body.archived && (!prev || !prev.archived)) events.push('task.archived');
         events.forEach(ev => triggerWebhooks(ev, { task: t, previous: prev }, t.project_id));
-        return res.json({ ...t, blocked: isTaskBlocked(id) });
+        return send(res, 200, { ...t, blocked: isTaskBlocked(id) });
       }
       if (method === 'DELETE') {
         const t = getTask(id);
         if (!deleteTask(id)) return res.status(404).json({ error: 'Not found' });
         if (t) triggerWebhooks('task.deleted', { task: t }, t.project_id);
-        return res.json({ success: true });
+        return send(res, 200, { success: true });
       }
     }
 
     m = path.match(/^\/projects\/([^/]+)\/cleanup$/);
     if (m && method === 'POST') {
-      return res.json({ success: true, ...cleanupProject(m[1], body.archiveTasks ?? true, body.archiveEpics ?? true) });
+      const result = cleanupProject(m[1], body.archiveTasks ?? true, body.archiveEpics ?? true);
+      return send(res, 200, { success: true, ...result });
     }
 
     // Webhooks
     if (path === '/webhooks' && method === 'GET') return res.json(getWebhooks());
     if (path === '/webhooks' && method === 'POST') {
       if (!body.name || !body.url || !body.events) return res.status(400).json({ error: 'Missing fields' });
-      return res.status(201).json(createWebhook(body.name, body.url, body.events, body));
+      const w = createWebhook(body.name, body.url, body.events, body);
+      return send(res, 201, w);
     }
 
     m = path.match(/^\/webhooks\/([^/]+)$/);
@@ -228,10 +243,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       if (method === 'PATCH') {
         const w = updateWebhook(id, body);
-        return w ? res.json(w) : res.status(404).json({ error: 'Not found' });
+        if (!w) return res.status(404).json({ error: 'Not found' });
+        return send(res, 200, w);
       }
       if (method === 'DELETE') {
-        return deleteWebhook(id) ? res.json({ success: true }) : res.status(404).json({ error: 'Not found' });
+        if (!deleteWebhook(id)) return res.status(404).json({ error: 'Not found' });
+        return send(res, 200, { success: true });
       }
     }
 
@@ -261,7 +278,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (getProductBySku(b.sku)) return res.status(400).json({ error: 'SKU exists' });
       const prod = createProduct(b);
       triggerWebhooks('product.created', { product: prod });
-      return res.status(201).json(prod);
+      return send(res, 201, prod);
     }
 
     m = path.match(/^\/products\/([^/]+)$/);
@@ -281,13 +298,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const p = updateProduct(id, b);
         if (!p) return res.status(404).json({ error: 'Not found' });
         triggerWebhooks('product.updated', { product: p, previous: prev });
-        return res.json(p);
+        return send(res, 200, p);
       }
       if (method === 'DELETE') {
         const p = getProduct(id);
         if (!deleteProduct(id)) return res.status(404).json({ error: 'Not found' });
         if (p) triggerWebhooks('product.deleted', { product: p });
-        return res.json({ success: true });
+        return send(res, 200, { success: true });
       }
     }
 
@@ -310,7 +327,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!b.type || !b.name) return res.status(400).json({ error: 'Missing fields' });
       const c = createCustomer(b);
       triggerWebhooks('customer.created', { customer: c });
-      return res.status(201).json(c);
+      return send(res, 201, c);
     }
 
     m = path.match(/^\/customers\/([^/]+)\/quotes$/);
@@ -331,13 +348,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const c = updateCustomer(id, body as UpdateCustomerInput);
         if (!c) return res.status(404).json({ error: 'Not found' });
         triggerWebhooks('customer.updated', { customer: c, previous: prev });
-        return res.json(c);
+        return send(res, 200, c);
       }
       if (method === 'DELETE') {
         const c = getCustomer(id);
         if (!deleteCustomer(id)) return res.status(404).json({ error: 'Not found' });
         if (c) triggerWebhooks('customer.deleted', { customer: c });
-        return res.json({ success: true });
+        return send(res, 200, { success: true });
       }
     }
 
@@ -358,7 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const q = createQuote(b);
         triggerWebhooks('quote.created', { quote: q });
-        return res.status(201).json(q);
+        return send(res, 201, q);
       } catch (e: any) {
         return res.status(400).json({ error: e.message });
       }
@@ -373,7 +390,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!q) return res.status(404).json({ error: 'Not found' });
       triggerWebhooks('quote.updated', { quote: q, previous: prev });
       if (prev.status !== body.status) triggerWebhooks('quote.status_changed', { quote: q, previous: prev });
-      return res.json(q);
+      return send(res, 200, q);
     }
 
     m = path.match(/^\/quotes\/([^/]+)$/);
@@ -392,7 +409,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const events: WebhookEventType[] = ['quote.updated'];
           if (body.status && prev.status !== body.status) events.push('quote.status_changed');
           events.forEach(ev => triggerWebhooks(ev, { quote: q, previous: prev }));
-          return res.json(q);
+          return send(res, 200, q);
         } catch (e: any) {
           return res.status(400).json({ error: e.message });
         }
@@ -401,7 +418,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const q = getQuote(id);
         if (!deleteQuote(id)) return res.status(404).json({ error: 'Not found' });
         if (q) triggerWebhooks('quote.deleted', { quote: q });
-        return res.json({ success: true });
+        return send(res, 200, { success: true });
       }
     }
 
