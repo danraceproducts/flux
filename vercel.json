@@ -1,11 +1,5 @@
 {
   "version": 2,
   "installCommand": "npm i -g pnpm && pnpm install",
-  "buildCommand": "pnpm build",
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/index.ts" },
-    { "src": "/assets/(.*)", "dest": "/packages/web/dist/assets/$1" },
-    { "src": "/(.*\\.(js|css|ico|png|jpg|svg|woff|woff2))", "dest": "/packages/web/dist/$1" },
-    { "src": "/(.*)", "dest": "/packages/web/dist/index.html" }
-  ]
+  "buildCommand": "pnpm build && mkdir -p public && cp -r packages/web/dist/* public/"
 }
