@@ -3,11 +3,6 @@
   "buildCommand": "pnpm install && pnpm build",
   "installCommand": "npm i -g pnpm && pnpm install",
   "outputDirectory": "packages/web/dist",
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "packages/shared/dist/**"
-    }
-  },
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/index.ts" },
     { "src": "/assets/(.*)", "dest": "/assets/$1" },
