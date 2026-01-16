@@ -1,4 +1,4 @@
-import type { Task, Epic, Project, Webhook, WebhookDelivery, WebhookEventType, Product, CreateProductInput, UpdateProductInput, ProductFilters, Customer, CreateCustomerInput, UpdateCustomerInput, CustomerFilters } from '@flux/shared';
+import type { Task, Epic, Project, Webhook, WebhookDelivery, WebhookEventType, Product, CreateProductInput, UpdateProductInput, ProductFilters, Customer, CreateCustomerInput, UpdateCustomerInput, CustomerFilters, Quote, CreateQuoteInput, UpdateQuoteInput, QuoteFilters, QuoteStatus } from '@flux/shared';
 
 const API_BASE = import.meta.env.DEV ? 'http://localhost:3000/api' : '/api';
 
@@ -331,4 +331,79 @@ export async function getCustomerTags(): Promise<string[]> {
 export async function getCustomerSources(): Promise<string[]> {
   const res = await fetch(`${API_BASE}/customers/sources`);
   return res.json();
+}
+
+// ============ Quote Operations ============
+
+export async function getQuotes(filters?: QuoteFilters): Promise<Quote[]> {
+  const params = new URLSearchParams();
+  if (filters?.customerId) params.append('customerId', filters.customerId);
+  if (filters?.status) params.append('status', filters.status);
+  if (filters?.search) params.append('search', filters.search);
+  if (filters?.fromDate) params.append('fromDate', filters.fromDate);
+  if (filters?.toDate) params.append('toDate', filters.toDate);
+
+  const queryString = params.toString();
+  const url = queryString ? `${API_BASE}/quotes?${queryString}` : `${API_BASE}/quotes`;
+  const res = await fetch(url);
+  return res.json();
+}
+
+export async function getQuote(id: string): Promise<Quote | null> {
+  const res = await fetch(`${API_BASE}/quotes/${id}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getQuotesByCustomer(customerId: string): Promise<Quote[]> {
+  const res = await fetch(`${API_BASE}/customers/${customerId}/quotes`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function createQuote(input: CreateQuoteInput): Promise<Quote> {
+  const res = await fetch(`${API_BASE}/quotes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to create quote');
+  }
+  return res.json();
+}
+
+export async function updateQuote(
+  id: string,
+  updates: UpdateQuoteInput
+): Promise<Quote | null> {
+  const res = await fetch(`${API_BASE}/quotes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to update quote');
+  }
+  return res.json();
+}
+
+export async function updateQuoteStatus(id: string, status: QuoteStatus): Promise<Quote | null> {
+  const res = await fetch(`${API_BASE}/quotes/${id}/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) {
+    const error = await res.json();
+    throw new Error(error.error || 'Failed to update quote status');
+  }
+  return res.json();
+}
+
+export async function deleteQuote(id: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/quotes/${id}`, { method: 'DELETE' });
+  return res.ok;
 }

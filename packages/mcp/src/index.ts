@@ -51,14 +51,27 @@ import {
   updateCustomer,
   deleteCustomer,
   searchCustomers,
+  // Quote imports
+  listQuotes,
+  getQuote,
+  getQuotesByCustomer,
+  createQuote,
+  updateQuote,
+  updateQuoteStatus,
+  deleteQuote,
+  searchQuotes,
   type Store,
   STATUSES,
   WEBHOOK_EVENT_TYPES,
+  QUOTE_STATUSES,
   type WebhookEventType,
   type CreateProductInput,
   type ProductFilters,
   type CreateCustomerInput,
   type CustomerFilters,
+  type CreateQuoteInput,
+  type QuoteFilters,
+  type QuoteStatus,
 } from '@flux/shared';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -735,6 +748,138 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ['id'],
         },
       },
+
+      // Quote tools
+      {
+        name: 'list_quotes',
+        description: 'List quotes with optional filters',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            customerId: { type: 'string', description: 'Filter by customer ID' },
+            status: { type: 'string', enum: QUOTE_STATUSES, description: 'Filter by status' },
+            search: { type: 'string', description: 'Search quote number, customer name, or notes' },
+            fromDate: { type: 'string', description: 'Filter quotes from this date (ISO format)' },
+            toDate: { type: 'string', description: 'Filter quotes until this date (ISO format)' },
+          },
+        },
+      },
+      {
+        name: 'create_quote',
+        description: 'Create a new sales quote for a customer',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            customerId: { type: 'string', description: 'Customer ID for the quote' },
+            lineItems: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  productId: { type: 'string', description: 'Product ID' },
+                  quantity: { type: 'number', description: 'Quantity' },
+                  unitPrice: { type: 'number', description: 'Optional unit price override' },
+                  discount: { type: 'number', description: 'Optional discount percentage (0-100)' },
+                },
+                required: ['productId', 'quantity'],
+              },
+              description: 'Array of line items with productId and quantity',
+            },
+            taxRate: { type: 'number', description: 'Tax rate percentage (default 10 for GST)' },
+            validDays: { type: 'number', description: 'Days until quote expires (default 30)' },
+            notes: { type: 'string', description: 'Quote notes' },
+            terms: { type: 'string', description: 'Terms and conditions' },
+          },
+          required: ['customerId', 'lineItems'],
+        },
+      },
+      {
+        name: 'get_quote',
+        description: 'Get a quote by ID',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Quote ID' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'get_customer_quotes',
+        description: 'Get all quotes for a specific customer',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            customerId: { type: 'string', description: 'Customer ID' },
+          },
+          required: ['customerId'],
+        },
+      },
+      {
+        name: 'update_quote',
+        description: 'Update an existing quote (line items, notes, terms, etc.)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Quote ID (required)' },
+            customerId: { type: 'string', description: 'New customer ID' },
+            lineItems: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  productId: { type: 'string', description: 'Product ID' },
+                  quantity: { type: 'number', description: 'Quantity' },
+                  unitPrice: { type: 'number', description: 'Optional unit price override' },
+                  discount: { type: 'number', description: 'Optional discount percentage (0-100)' },
+                },
+                required: ['productId', 'quantity'],
+              },
+              description: 'New array of line items',
+            },
+            taxRate: { type: 'number', description: 'New tax rate percentage' },
+            validUntil: { type: 'string', description: 'New expiry date (ISO format)' },
+            notes: { type: 'string', description: 'New notes' },
+            terms: { type: 'string', description: 'New terms and conditions' },
+            status: { type: 'string', enum: QUOTE_STATUSES, description: 'New status' },
+          },
+          required: ['id'],
+        },
+      },
+      {
+        name: 'update_quote_status',
+        description: 'Change the status of a quote (draft, sent, accepted, rejected, expired)',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Quote ID' },
+            status: { type: 'string', enum: QUOTE_STATUSES, description: 'New status' },
+          },
+          required: ['id', 'status'],
+        },
+      },
+      {
+        name: 'search_quotes',
+        description: 'Search quotes by quote number, customer name, or product info',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+          },
+          required: ['query'],
+        },
+      },
+      {
+        name: 'delete_quote',
+        description: 'Delete a quote permanently',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', description: 'Quote ID to delete' },
+          },
+          required: ['id'],
+        },
+      },
     ],
   };
 });
@@ -1281,6 +1426,210 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       return {
         content: [{ type: 'text', text: `Customer ${args.id} has been deactivated` }],
+      };
+    }
+
+    // Quote operations
+    case 'list_quotes': {
+      const filters: QuoteFilters = {};
+      if (args?.customerId) filters.customerId = args.customerId as string;
+      if (args?.status) filters.status = args.status as QuoteStatus;
+      if (args?.search) filters.search = args.search as string;
+      if (args?.fromDate) filters.fromDate = args.fromDate as string;
+      if (args?.toDate) filters.toDate = args.toDate as string;
+
+      const quotes = listQuotes(filters);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(quotes, null, 2) }],
+      };
+    }
+
+    case 'create_quote': {
+      if (!args?.customerId || !args?.lineItems) {
+        return {
+          content: [{ type: 'text', text: 'Error: customerId and lineItems are required' }],
+          isError: true,
+        };
+      }
+
+      const lineItems = args.lineItems as Array<{ productId: string; quantity: number; unitPrice?: number; discount?: number }>;
+      if (!Array.isArray(lineItems) || lineItems.length === 0) {
+        return {
+          content: [{ type: 'text', text: 'Error: lineItems must be a non-empty array' }],
+          isError: true,
+        };
+      }
+
+      const input: CreateQuoteInput = {
+        customerId: args.customerId as string,
+        lineItems: lineItems.map(li => ({
+          productId: li.productId,
+          quantity: li.quantity,
+          unitPrice: li.unitPrice,
+          discount: li.discount,
+        })),
+        taxRate: args?.taxRate as number | undefined,
+        validDays: args?.validDays as number | undefined,
+        notes: args?.notes as string | undefined,
+        terms: args?.terms as string | undefined,
+      };
+
+      try {
+        const quote = createQuote(input);
+        return {
+          content: [
+            { type: 'text', text: `Created quote ${quote.quoteNumber} for ${quote.customerName} with total $${quote.total.toFixed(2)}. ID: ${quote.id}` },
+          ],
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'get_quote': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const quote = getQuote(args.id as string);
+      if (!quote) {
+        return {
+          content: [{ type: 'text', text: 'Quote not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: JSON.stringify(quote, null, 2) }],
+      };
+    }
+
+    case 'get_customer_quotes': {
+      if (!args?.customerId) {
+        return {
+          content: [{ type: 'text', text: 'Error: customerId is required' }],
+          isError: true,
+        };
+      }
+
+      const customer = getCustomer(args.customerId as string);
+      if (!customer) {
+        return {
+          content: [{ type: 'text', text: 'Customer not found' }],
+          isError: true,
+        };
+      }
+
+      const quotes = getQuotesByCustomer(args.customerId as string);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(quotes, null, 2) }],
+      };
+    }
+
+    case 'update_quote': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (args?.customerId) updates.customerId = args.customerId;
+      if (args?.lineItems) {
+        const lineItems = args.lineItems as Array<{ productId: string; quantity: number; unitPrice?: number; discount?: number }>;
+        updates.lineItems = lineItems.map(li => ({
+          productId: li.productId,
+          quantity: li.quantity,
+          unitPrice: li.unitPrice,
+          discount: li.discount,
+        }));
+      }
+      if (args?.taxRate !== undefined) updates.taxRate = args.taxRate;
+      if (args?.validUntil !== undefined) updates.validUntil = args.validUntil;
+      if (args?.notes !== undefined) updates.notes = args.notes;
+      if (args?.terms !== undefined) updates.terms = args.terms;
+      if (args?.status) updates.status = args.status;
+
+      try {
+        const quote = updateQuote(args.id as string, updates);
+        if (!quote) {
+          return {
+            content: [{ type: 'text', text: 'Quote not found' }],
+            isError: true,
+          };
+        }
+
+        return {
+          content: [{ type: 'text', text: `Updated quote: ${JSON.stringify(quote, null, 2)}` }],
+        };
+      } catch (error: any) {
+        return {
+          content: [{ type: 'text', text: `Error: ${error.message}` }],
+          isError: true,
+        };
+      }
+    }
+
+    case 'update_quote_status': {
+      if (!args?.id || !args?.status) {
+        return {
+          content: [{ type: 'text', text: 'Error: id and status are required' }],
+          isError: true,
+        };
+      }
+
+      const quote = updateQuoteStatus(args.id as string, args.status as QuoteStatus);
+      if (!quote) {
+        return {
+          content: [{ type: 'text', text: 'Quote not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: `Quote ${quote.quoteNumber} status updated to "${quote.status}"` }],
+      };
+    }
+
+    case 'search_quotes': {
+      if (!args?.query) {
+        return {
+          content: [{ type: 'text', text: 'Error: query is required' }],
+          isError: true,
+        };
+      }
+
+      const quotes = searchQuotes(args.query as string);
+      return {
+        content: [{ type: 'text', text: JSON.stringify(quotes, null, 2) }],
+      };
+    }
+
+    case 'delete_quote': {
+      if (!args?.id) {
+        return {
+          content: [{ type: 'text', text: 'Error: id is required' }],
+          isError: true,
+        };
+      }
+
+      const success = deleteQuote(args.id as string);
+      if (!success) {
+        return {
+          content: [{ type: 'text', text: 'Quote not found' }],
+          isError: true,
+        };
+      }
+
+      return {
+        content: [{ type: 'text', text: `Quote ${args.id} has been deleted` }],
       };
     }
 

@@ -47,6 +47,7 @@ export type Store = {
   tasks: Task[];
   products?: Product[];
   customers?: Customer[];
+  quotes?: Quote[];
 };
 
 // ============ Product Types ============
@@ -208,6 +209,101 @@ export type CustomerFilters = {
   search?: string;                 // Search name, email, phone, notes
 };
 
+// ============ Quote Types ============
+
+export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired';
+
+export const QUOTE_STATUSES: QuoteStatus[] = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
+
+export const QUOTE_STATUS_CONFIG: Record<QuoteStatus, { label: string; color: string }> = {
+  draft: { label: 'Draft', color: '#6b7280' },
+  sent: { label: 'Sent', color: '#3b82f6' },
+  accepted: { label: 'Accepted', color: '#22c55e' },
+  rejected: { label: 'Rejected', color: '#ef4444' },
+  expired: { label: 'Expired', color: '#f59e0b' },
+};
+
+// Quote line item - links to a product
+export type QuoteLineItem = {
+  id: string;
+  productId: string;
+  productSku: string;              // Denormalized for display
+  productName: string;             // Denormalized for display
+  quantity: number;
+  unitPrice: number;               // Price per unit (can override product price)
+  discount: number;                // Discount percentage (0-100)
+  lineTotal: number;               // Calculated: quantity * unitPrice * (1 - discount/100)
+};
+
+// Quote represents a sales quote for a customer
+export type Quote = {
+  id: string;
+  quoteNumber: string;             // "Q-2026-0001"
+
+  // Customer link
+  customerId: string;
+  customerName: string;            // Denormalized for display
+
+  // Line items
+  lineItems: QuoteLineItem[];
+
+  // Totals
+  subtotal: number;                // Sum of line totals
+  taxRate: number;                 // Tax percentage (default 10 for GST)
+  taxAmount: number;               // Calculated: subtotal * taxRate/100
+  total: number;                   // subtotal + taxAmount
+
+  // Status
+  status: QuoteStatus;
+
+  // Dates
+  issueDate: string;
+  validUntil: string;              // Expiry date
+
+  // Notes
+  notes?: string;
+  terms?: string;                  // Terms and conditions
+
+  // Metadata
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CreateQuoteLineItemInput = {
+  productId: string;
+  quantity: number;
+  unitPrice?: number;              // Optional - defaults to product sellPrice
+  discount?: number;               // Optional - defaults to 0
+};
+
+export type CreateQuoteInput = {
+  customerId: string;
+  lineItems: CreateQuoteLineItemInput[];
+  taxRate?: number;                // Defaults to 10 (GST)
+  validDays?: number;              // Days until expiry (default 30)
+  notes?: string;
+  terms?: string;
+  status?: QuoteStatus;
+};
+
+export type UpdateQuoteInput = {
+  customerId?: string;
+  lineItems?: CreateQuoteLineItemInput[];
+  taxRate?: number;
+  validUntil?: string;
+  notes?: string;
+  terms?: string;
+  status?: QuoteStatus;
+};
+
+export type QuoteFilters = {
+  customerId?: string;
+  status?: QuoteStatus;
+  search?: string;                 // Search quote number, customer name
+  fromDate?: string;
+  toDate?: string;
+};
+
 // Status columns for the Kanban board
 export type Status = 'planning' | 'todo' | 'in_progress' | 'done';
 
@@ -253,7 +349,11 @@ export type WebhookEventType =
   | 'product.deleted'
   | 'customer.created'
   | 'customer.updated'
-  | 'customer.deleted';
+  | 'customer.deleted'
+  | 'quote.created'
+  | 'quote.updated'
+  | 'quote.deleted'
+  | 'quote.status_changed';
 
 export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
   'project.created',
@@ -273,6 +373,10 @@ export const WEBHOOK_EVENT_TYPES: WebhookEventType[] = [
   'customer.created',
   'customer.updated',
   'customer.deleted',
+  'quote.created',
+  'quote.updated',
+  'quote.deleted',
+  'quote.status_changed',
 ];
 
 // Webhook event type labels for UI
@@ -294,6 +398,10 @@ export const WEBHOOK_EVENT_LABELS: Record<WebhookEventType, string> = {
   'customer.created': 'Customer Created',
   'customer.updated': 'Customer Updated',
   'customer.deleted': 'Customer Deleted',
+  'quote.created': 'Quote Created',
+  'quote.updated': 'Quote Updated',
+  'quote.deleted': 'Quote Deleted',
+  'quote.status_changed': 'Quote Status Changed',
 };
 
 // Webhook configuration
@@ -335,7 +443,8 @@ export type WebhookPayload = {
     task?: Task;
     product?: Product;
     customer?: Customer;
-    previous?: Partial<Project | Epic | Task | Product | Customer>; // For update events
+    quote?: Quote;
+    previous?: Partial<Project | Epic | Task | Product | Customer | Quote>; // For update events
   };
 };
 

@@ -1,4 +1,4 @@
-import type { Task, Epic, Project, Store, Webhook, WebhookDelivery, WebhookEventType, WebhookPayload, StoreWithWebhooks, Product, CreateProductInput, UpdateProductInput, ProductFilters, Customer, CreateCustomerInput, UpdateCustomerInput, CustomerFilters } from './types.js';
+import type { Task, Epic, Project, Store, Webhook, WebhookDelivery, WebhookEventType, WebhookPayload, StoreWithWebhooks, Product, CreateProductInput, UpdateProductInput, ProductFilters, Customer, CreateCustomerInput, UpdateCustomerInput, CustomerFilters, Quote, QuoteLineItem, CreateQuoteInput, CreateQuoteLineItemInput, UpdateQuoteInput, QuoteFilters, QuoteStatus } from './types.js';
 
 // Storage adapter interface - can be localStorage or file-based
 export interface StorageAdapter {
@@ -54,6 +54,7 @@ export function initStore(): Store {
   if (!Array.isArray(data.epics)) data.epics = [];
   if (!Array.isArray(data.products)) data.products = [];
   if (!Array.isArray(data.customers)) data.customers = [];
+  if (!Array.isArray(data.quotes)) data.quotes = [];
 
   return db.data;
 }
@@ -811,5 +812,263 @@ export function searchCustomers(query: string): Customer[] {
     c.phone?.toLowerCase().includes(searchLower) ||
     c.mobile?.toLowerCase().includes(searchLower) ||
     c.notes?.toLowerCase().includes(searchLower)
+  );
+}
+
+// ============ Quote Operations ============
+
+// Ensure quotes array exists
+function ensureQuotesArray(): void {
+  if (!db.data.quotes) db.data.quotes = [];
+}
+
+// Generate next quote number (Q-YYYY-NNNN format)
+function generateQuoteNumber(): string {
+  ensureQuotesArray();
+  const year = new Date().getFullYear();
+  const prefix = `Q-${year}-`;
+
+  // Find the highest number for this year
+  let maxNum = 0;
+  for (const quote of db.data.quotes || []) {
+    if (quote.quoteNumber.startsWith(prefix)) {
+      const numStr = quote.quoteNumber.substring(prefix.length);
+      const num = parseInt(numStr, 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    }
+  }
+
+  return `${prefix}${String(maxNum + 1).padStart(4, '0')}`;
+}
+
+// Calculate line item total
+function calculateLineTotal(quantity: number, unitPrice: number, discount: number): number {
+  return Math.round(quantity * unitPrice * (1 - discount / 100) * 100) / 100;
+}
+
+// Build line items from input, denormalizing product info
+function buildLineItems(lineItemInputs: CreateQuoteLineItemInput[]): QuoteLineItem[] {
+  ensureProductsArray();
+  const lineItems: QuoteLineItem[] = [];
+
+  for (const input of lineItemInputs) {
+    const product = db.data.products?.find(p => p.id === input.productId);
+    if (!product) {
+      throw new Error(`Product not found: ${input.productId}`);
+    }
+
+    const unitPrice = input.unitPrice ?? product.sellPrice;
+    const discount = input.discount ?? 0;
+    const lineTotal = calculateLineTotal(input.quantity, unitPrice, discount);
+
+    lineItems.push({
+      id: generateId(),
+      productId: product.id,
+      productSku: product.sku,
+      productName: product.name,
+      quantity: input.quantity,
+      unitPrice,
+      discount,
+      lineTotal,
+    });
+  }
+
+  return lineItems;
+}
+
+// Calculate quote totals from line items
+function calculateQuoteTotals(lineItems: QuoteLineItem[], taxRate: number): { subtotal: number; taxAmount: number; total: number } {
+  const subtotal = lineItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const taxAmount = Math.round(subtotal * taxRate / 100 * 100) / 100;
+  const total = Math.round((subtotal + taxAmount) * 100) / 100;
+  return { subtotal, taxAmount, total };
+}
+
+export function getQuotes(): Quote[] {
+  ensureQuotesArray();
+  return [...(db.data.quotes || [])];
+}
+
+export function listQuotes(filters?: QuoteFilters): Quote[] {
+  ensureQuotesArray();
+  let quotes = [...(db.data.quotes || [])];
+
+  if (filters) {
+    if (filters.customerId) {
+      quotes = quotes.filter(q => q.customerId === filters.customerId);
+    }
+    if (filters.status) {
+      quotes = quotes.filter(q => q.status === filters.status);
+    }
+    if (filters.fromDate) {
+      quotes = quotes.filter(q => q.issueDate >= filters.fromDate!);
+    }
+    if (filters.toDate) {
+      quotes = quotes.filter(q => q.issueDate <= filters.toDate!);
+    }
+    if (filters.search) {
+      const searchLower = filters.search.toLowerCase();
+      quotes = quotes.filter(q =>
+        q.quoteNumber.toLowerCase().includes(searchLower) ||
+        q.customerName.toLowerCase().includes(searchLower) ||
+        q.notes?.toLowerCase().includes(searchLower)
+      );
+    }
+  }
+
+  // Sort by issue date descending (most recent first)
+  quotes.sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime());
+
+  return quotes;
+}
+
+export function getQuote(id: string): Quote | undefined {
+  ensureQuotesArray();
+  return db.data.quotes?.find(q => q.id === id);
+}
+
+export function getQuoteByNumber(quoteNumber: string): Quote | undefined {
+  ensureQuotesArray();
+  return db.data.quotes?.find(q => q.quoteNumber.toLowerCase() === quoteNumber.toLowerCase());
+}
+
+export function getQuotesByCustomer(customerId: string): Quote[] {
+  ensureQuotesArray();
+  return (db.data.quotes || []).filter(q => q.customerId === customerId);
+}
+
+export function createQuote(input: CreateQuoteInput): Quote {
+  ensureQuotesArray();
+  ensureCustomersArray();
+
+  // Get customer info for denormalization
+  const customer = db.data.customers?.find(c => c.id === input.customerId);
+  if (!customer) {
+    throw new Error(`Customer not found: ${input.customerId}`);
+  }
+
+  // Build line items
+  const lineItems = buildLineItems(input.lineItems);
+
+  // Calculate totals
+  const taxRate = input.taxRate ?? 10; // Default 10% GST
+  const { subtotal, taxAmount, total } = calculateQuoteTotals(lineItems, taxRate);
+
+  // Calculate expiry date
+  const now = new Date();
+  const validDays = input.validDays ?? 30;
+  const validUntil = new Date(now.getTime() + validDays * 24 * 60 * 60 * 1000);
+
+  const quote: Quote = {
+    id: generateId(),
+    quoteNumber: generateQuoteNumber(),
+    customerId: customer.id,
+    customerName: customer.name,
+    lineItems,
+    subtotal,
+    taxRate,
+    taxAmount,
+    total,
+    status: input.status ?? 'draft',
+    issueDate: now.toISOString(),
+    validUntil: validUntil.toISOString(),
+    notes: input.notes,
+    terms: input.terms,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+
+  db.data.quotes!.push(quote);
+  db.write();
+  return quote;
+}
+
+export function updateQuote(id: string, input: UpdateQuoteInput): Quote | undefined {
+  ensureQuotesArray();
+  const index = db.data.quotes!.findIndex(q => q.id === id);
+  if (index === -1) return undefined;
+
+  const quote = db.data.quotes![index];
+  const updates: Partial<Quote> = {
+    updatedAt: new Date().toISOString(),
+  };
+
+  // Update customer if changed
+  if (input.customerId && input.customerId !== quote.customerId) {
+    ensureCustomersArray();
+    const customer = db.data.customers?.find(c => c.id === input.customerId);
+    if (!customer) {
+      throw new Error(`Customer not found: ${input.customerId}`);
+    }
+    updates.customerId = customer.id;
+    updates.customerName = customer.name;
+  }
+
+  // Update line items if provided
+  if (input.lineItems) {
+    updates.lineItems = buildLineItems(input.lineItems);
+  }
+
+  // Update tax rate
+  if (input.taxRate !== undefined) {
+    updates.taxRate = input.taxRate;
+  }
+
+  // Recalculate totals if line items or tax rate changed
+  if (updates.lineItems || updates.taxRate !== undefined) {
+    const lineItems = updates.lineItems || quote.lineItems;
+    const taxRate = updates.taxRate ?? quote.taxRate;
+    const { subtotal, taxAmount, total } = calculateQuoteTotals(lineItems, taxRate);
+    updates.subtotal = subtotal;
+    updates.taxAmount = taxAmount;
+    updates.total = total;
+  }
+
+  // Update other fields
+  if (input.validUntil !== undefined) updates.validUntil = input.validUntil;
+  if (input.notes !== undefined) updates.notes = input.notes;
+  if (input.terms !== undefined) updates.terms = input.terms;
+  if (input.status !== undefined) updates.status = input.status;
+
+  const updated: Quote = { ...quote, ...updates };
+  db.data.quotes![index] = updated;
+  db.write();
+  return updated;
+}
+
+export function updateQuoteStatus(id: string, status: QuoteStatus): Quote | undefined {
+  ensureQuotesArray();
+  const index = db.data.quotes!.findIndex(q => q.id === id);
+  if (index === -1) return undefined;
+
+  db.data.quotes![index].status = status;
+  db.data.quotes![index].updatedAt = new Date().toISOString();
+  db.write();
+  return db.data.quotes![index];
+}
+
+export function deleteQuote(id: string): boolean {
+  ensureQuotesArray();
+  const index = db.data.quotes!.findIndex(q => q.id === id);
+  if (index === -1) return false;
+
+  db.data.quotes!.splice(index, 1);
+  db.write();
+  return true;
+}
+
+export function searchQuotes(query: string): Quote[] {
+  ensureQuotesArray();
+  const searchLower = query.toLowerCase();
+  return (db.data.quotes || []).filter(q =>
+    q.quoteNumber.toLowerCase().includes(searchLower) ||
+    q.customerName.toLowerCase().includes(searchLower) ||
+    q.notes?.toLowerCase().includes(searchLower) ||
+    q.lineItems.some(li =>
+      li.productSku.toLowerCase().includes(searchLower) ||
+      li.productName.toLowerCase().includes(searchLower)
+    )
   );
 }

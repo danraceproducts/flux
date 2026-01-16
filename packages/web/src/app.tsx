@@ -1,5 +1,5 @@
 import Router from 'preact-router'
-import { ProjectCreate, ProjectList, Board, Webhooks, Products, Customers } from './pages'
+import { ProjectCreate, ProjectList, Board, Webhooks, Products, Customers, Quotes } from './pages'
 import { ThemeProvider } from './components'
 
 export function App() {
@@ -12,6 +12,7 @@ export function App() {
         <Webhooks path="/webhooks" />
         <Products path="/products" />
         <Customers path="/customers" />
+        <Quotes path="/quotes" />
       </Router>
     </ThemeProvider>
   )

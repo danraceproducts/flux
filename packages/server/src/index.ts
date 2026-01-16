@@ -55,6 +55,15 @@ import {
   getCustomerTags,
   getCustomerSources,
   searchCustomers,
+  // Quote imports
+  listQuotes,
+  getQuote,
+  getQuoteByNumber,
+  getQuotesByCustomer,
+  createQuote,
+  updateQuote,
+  updateQuoteStatus,
+  deleteQuote,
   type Store,
   type WebhookEventType,
   type ProductFilters,
@@ -63,6 +72,10 @@ import {
   type CustomerFilters,
   type CreateCustomerInput,
   type UpdateCustomerInput,
+  type QuoteFilters,
+  type CreateQuoteInput,
+  type UpdateQuoteInput,
+  type QuoteStatus,
 } from '@flux/shared';
 import { handleWebhookEvent, testWebhookDelivery } from './webhook-service.js';
 import { initializeFirebase, isFirebaseConfigured } from './firebase.js';
@@ -696,6 +709,151 @@ app.delete('/api/customers/:id', (c) => {
   // Trigger webhook
   if (customer) {
     triggerWebhooks('customer.deleted', { customer });
+  }
+  return c.json({ success: true });
+});
+
+// ============ Quote Routes ============
+
+// List quotes with optional filters
+app.get('/api/quotes', (c) => {
+  const filters: QuoteFilters = {};
+
+  const customerId = c.req.query('customerId');
+  const status = c.req.query('status');
+  const search = c.req.query('search');
+  const fromDate = c.req.query('fromDate');
+  const toDate = c.req.query('toDate');
+
+  if (customerId) filters.customerId = customerId;
+  if (status) filters.status = status as QuoteStatus;
+  if (search) filters.search = search;
+  if (fromDate) filters.fromDate = fromDate;
+  if (toDate) filters.toDate = toDate;
+
+  const quotes = listQuotes(filters);
+  return c.json(quotes);
+});
+
+// Get single quote
+app.get('/api/quotes/:id', (c) => {
+  const quote = getQuote(c.req.param('id'));
+  if (!quote) return c.json({ error: 'Quote not found' }, 404);
+  return c.json(quote);
+});
+
+// Get quotes by customer
+app.get('/api/customers/:customerId/quotes', (c) => {
+  const customerId = c.req.param('customerId');
+  const customer = getCustomer(customerId);
+  if (!customer) return c.json({ error: 'Customer not found' }, 404);
+  const quotes = getQuotesByCustomer(customerId);
+  return c.json(quotes);
+});
+
+// Create quote
+app.post('/api/quotes', async (c) => {
+  const body = await c.req.json() as CreateQuoteInput;
+
+  if (!body.customerId || !body.lineItems || !Array.isArray(body.lineItems) || body.lineItems.length === 0) {
+    return c.json({ error: 'Missing required fields: customerId, lineItems (non-empty array)' }, 400);
+  }
+
+  // Validate line items
+  for (const item of body.lineItems) {
+    if (!item.productId || item.quantity === undefined || item.quantity <= 0) {
+      return c.json({ error: 'Each line item must have productId and quantity > 0' }, 400);
+    }
+  }
+
+  try {
+    const quote = createQuote(body);
+    // Trigger webhook
+    triggerWebhooks('quote.created', { quote });
+    return c.json(quote, 201);
+  } catch (error: any) {
+    return c.json({ error: error.message || 'Failed to create quote' }, 400);
+  }
+});
+
+// Update quote
+app.patch('/api/quotes/:id', async (c) => {
+  const body = await c.req.json() as UpdateQuoteInput;
+  const previous = getQuote(c.req.param('id'));
+
+  if (!previous) return c.json({ error: 'Quote not found' }, 404);
+
+  // Validate line items if provided
+  if (body.lineItems) {
+    if (!Array.isArray(body.lineItems) || body.lineItems.length === 0) {
+      return c.json({ error: 'lineItems must be a non-empty array' }, 400);
+    }
+    for (const item of body.lineItems) {
+      if (!item.productId || item.quantity === undefined || item.quantity <= 0) {
+        return c.json({ error: 'Each line item must have productId and quantity > 0' }, 400);
+      }
+    }
+  }
+
+  try {
+    const quote = updateQuote(c.req.param('id'), body);
+    if (!quote) return c.json({ error: 'Quote not found' }, 404);
+
+    // Determine which webhook events to trigger
+    const events: WebhookEventType[] = ['quote.updated'];
+
+    // Check for status change
+    if (body.status && previous.status !== body.status) {
+      events.push('quote.status_changed');
+    }
+
+    // Trigger webhooks
+    for (const event of events) {
+      triggerWebhooks(event, { quote, previous });
+    }
+
+    return c.json(quote);
+  } catch (error: any) {
+    return c.json({ error: error.message || 'Failed to update quote' }, 400);
+  }
+});
+
+// Update quote status only
+app.patch('/api/quotes/:id/status', async (c) => {
+  const body = await c.req.json();
+  const previous = getQuote(c.req.param('id'));
+
+  if (!previous) return c.json({ error: 'Quote not found' }, 404);
+
+  if (!body.status) {
+    return c.json({ error: 'Missing required field: status' }, 400);
+  }
+
+  const validStatuses = ['draft', 'sent', 'accepted', 'rejected', 'expired'];
+  if (!validStatuses.includes(body.status)) {
+    return c.json({ error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` }, 400);
+  }
+
+  const quote = updateQuoteStatus(c.req.param('id'), body.status as QuoteStatus);
+  if (!quote) return c.json({ error: 'Quote not found' }, 404);
+
+  // Trigger webhooks
+  triggerWebhooks('quote.updated', { quote, previous });
+  if (previous.status !== body.status) {
+    triggerWebhooks('quote.status_changed', { quote, previous });
+  }
+
+  return c.json(quote);
+});
+
+// Delete quote
+app.delete('/api/quotes/:id', (c) => {
+  const quote = getQuote(c.req.param('id'));
+  const success = deleteQuote(c.req.param('id'));
+  if (!success) return c.json({ error: 'Quote not found' }, 404);
+  // Trigger webhook
+  if (quote) {
+    triggerWebhooks('quote.deleted', { quote });
   }
   return c.json({ success: true });
 });
