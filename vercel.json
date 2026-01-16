@@ -1,5 +1,8 @@
 {
   "version": 2,
   "installCommand": "npm i -g pnpm && pnpm install",
-  "buildCommand": "pnpm build && mkdir -p public && cp -r packages/web/dist/* public/"
+  "buildCommand": "pnpm build && cp -r packages/web/dist/* public/",
+  "rewrites": [
+    { "source": "/((?!api/).*)", "destination": "/index.html" }
+  ]
 }
