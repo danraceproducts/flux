@@ -2,11 +2,6 @@
   "version": 2,
   "installCommand": "npm i -g pnpm && pnpm install",
   "buildCommand": "pnpm build && cp -r packages/web/dist/* public/",
-  "functions": {
-    "api/index.ts": {
-      "includeFiles": "packages/shared/dist/**"
-    }
-  },
   "rewrites": [
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
