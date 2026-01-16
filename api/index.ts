@@ -62,7 +62,7 @@ import {
   type UpdateQuoteInput,
   type QuoteStatus,
   type FirestoreAdapter,
-} from '@flux/shared';
+} from '../packages/shared/dist/index.js';
 import { initializeApp, cert, getApps } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 
