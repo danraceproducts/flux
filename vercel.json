@@ -1,8 +1,4 @@
 {
-  "version": 2,
-  "installCommand": "npm i -g pnpm && pnpm install",
-  "buildCommand": "pnpm build && cp -r packages/web/dist/* public/",
-  "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
-  ]
+  "buildCommand": "npm i -g pnpm && pnpm install && pnpm build && cp -r packages/web/dist/* public/",
+  "outputDirectory": "public"
 }
